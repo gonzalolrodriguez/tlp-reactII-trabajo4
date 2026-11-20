@@ -201,11 +201,10 @@ Las capturas están en la carpeta `capturas/`. Se tomaron de la app real corrien
 | Mostrador después de "Entregar al siguiente" (El Aleph: de Marcos a Lucía) | `capturas/13-mostrador-despues.png` |
 | Escáner: pantalla previa al permiso (estado preguntable) | `capturas/14-escaner-pantalla-previa.png` |
 | Pantalla 404 | `capturas/15-pantalla-404.png` |
-
-Pendientes, porque necesitan el teléfono (la cámara y las notificaciones no funcionan en la versión web):
-
-- Escáner en los estados cargando, concedido (cámara abierta) y bloqueado (botón "Abrir Ajustes").
-- Notificación recibida (recordatorio a los 15 segundos o aviso del mostrador).
+| Escáner: cargando | `capturas/16-escaner-cargando.png` |
+| Escáner: permiso concedido (cámara abierta) | `capturas/17-escaner-concedido.png` |
+| Escáner: permiso bloqueado (botón "Abrir Ajustes") | `capturas/18-escaner-bloqueado.png` |
+| Notificación recibida | `capturas/19-notificacion-recibida.png` |
 
 ## Salida de `npx expo lint` y `npx tsc --noEmit`
 
