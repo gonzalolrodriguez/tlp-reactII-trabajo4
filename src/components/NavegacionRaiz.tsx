@@ -22,6 +22,7 @@ export default function NavegacionRaiz() {
       <Stack.Protected guard={sesion}>
         <Stack.Screen name="mostrador" options={{ title: 'Mostrador' }} />
       </Stack.Protected>
+      <Stack.Screen name="+not-found" options={{ title: 'Página no encontrada' }} />
     </Stack>
   );
 }
