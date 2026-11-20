@@ -184,20 +184,28 @@ No se hicieron: persistencia con AsyncStorage, modo oscuro ni la captura de la d
 
 ## Capturas
 
-Estado: **pendientes**. La persona que entrega las agrega en la carpeta `capturas/` (todavía no existe) antes de la entrega. Lista exacta de lo que pide el TP (F2.4):
+Las capturas están en la carpeta `capturas/`. Se tomaron de la app real corriendo en el navegador (`npx expo start`, versión web) con tamaño de pantalla de celular (390 × 844), no en un teléfono. Por eso el estilo del header y de las pestañas puede verse un poco distinto al de Android o iOS.
 
-1. Catálogo cargando.
-2. Catálogo con error.
-3. Catálogo con datos.
-4. Buscador.
-5. Detalle inexistente (`/libro/123`).
-6. Reserva con ejemplares.
-7. Reserva sin ejemplares (lista de espera).
-8. Escáner en sus cuatro estados: cargando, concedido, preguntable y bloqueado.
-9. Notificación recibida.
-10. Mostrador antes de "Entregar al siguiente".
-11. Mostrador después de "Entregar al siguiente".
-12. Pantalla 404.
+| Lo que pide el TP (F2.4) | Archivo |
+|---|---|
+| Catálogo cargando | `capturas/01-catalogo-cargando.png` |
+| Catálogo con error | `capturas/02-catalogo-error.png` |
+| Catálogo con datos | `capturas/03-catalogo-datos.png` |
+| Buscador | `capturas/04-buscador.png` |
+| Detalle inexistente (`/libro/123`) | `capturas/05-detalle-inexistente.png` |
+| Detalle de un libro (título en el header) | `capturas/06-detalle.png` |
+| Reserva con ejemplares | `capturas/07-reserva-con-ejemplares.png` y `capturas/08-mis-reservas-prestamo.png` |
+| Reserva sin ejemplares (lista de espera) | `capturas/09-reserva-sin-ejemplares.png` y `capturas/10-mis-reservas-espera.png` |
+| Login con clave incorrecta | `capturas/11-login-clave-incorrecta.png` |
+| Mostrador antes de "Entregar al siguiente" | `capturas/12-mostrador-antes.png` |
+| Mostrador después de "Entregar al siguiente" (El Aleph: de Marcos a Lucía) | `capturas/13-mostrador-despues.png` |
+| Escáner: pantalla previa al permiso (estado preguntable) | `capturas/14-escaner-pantalla-previa.png` |
+| Pantalla 404 | `capturas/15-pantalla-404.png` |
+
+Pendientes, porque necesitan el teléfono (la cámara y las notificaciones no funcionan en la versión web):
+
+- Escáner en los estados cargando, concedido (cámara abierta) y bloqueado (botón "Abrir Ajustes").
+- Notificación recibida (recordatorio a los 15 segundos o aviso del mostrador).
 
 ## Salida de `npx expo lint` y `npx tsc --noEmit`
 
