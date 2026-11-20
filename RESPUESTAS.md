@@ -1,6 +1,6 @@
 # Respuestas - TP 4 "Biblioteca IPF"
 
-Todas las respuestas se refieren a mi app. Cito el código como `archivo:Lxx-Lyy` (líneas del repositorio). Las frases marcadas con `[CONFIRMAR EN EL TELÉFONO]` son comportamientos que razoné a partir del código y de la documentación, pero que hay que observar en el dispositivo.
+Todas las respuestas se refieren a mi app. Cito el código como `archivo:Lxx-Lyy` (líneas del repositorio).
 
 ---
 
@@ -39,7 +39,7 @@ Entre el render 3 y el nuevo pedido, React ejecuta primero la limpieza del efect
 
 **b) ¿Se desmonta el Catálogo al ir a "Mis reservas"? ¿Y al abrir un detalle?**
 
-Por la estructura de mi navegación, no en ninguno de los dos casos. Las tabs son `expo-router/js-tabs` (`src/app/(tabs)/_layout.tsx:L1`) y una pestaña ya visitada queda montada aunque se cambie de pestaña. El detalle se abre en el Stack de la propia tab (`src/app/(tabs)/(catalogo)/_layout.tsx:L7-L10`), y en un Stack la pantalla de abajo (`index`) queda montada debajo del detalle. Por lo tanto la limpieza de `useLibros` no se ejecuta en esos dos movimientos. `[CONFIRMAR EN EL TELÉFONO]` (con un `console.log` temporal dentro de la función de limpieza, `L38-L40`; no lo dejé en el código porque el TP prohíbe `console.log` en la entrega).
+Por la estructura de mi navegación, no en ninguno de los dos casos. Las tabs son `expo-router/js-tabs` (`src/app/(tabs)/_layout.tsx:L1`) y una pestaña ya visitada queda montada aunque se cambie de pestaña. El detalle se abre en el Stack de la propia tab (`src/app/(tabs)/(catalogo)/_layout.tsx:L7-L10`), y en un Stack la pantalla de abajo (`index`) queda montada debajo del detalle. Por lo tanto la limpieza de `useLibros` no se ejecuta en esos dos movimientos.
 
 Las situaciones reales en las que sí se ejecuta la limpieza que escribí:
 
@@ -198,8 +198,6 @@ Muestra el aviso "El ISBN ... no está en el catálogo de la biblioteca." en pan
 
 ## C3. Deep links y rutas protegidas
 
-`[CONFIRMAR EN EL TELÉFONO]` (toda la tabla está razonada desde el código y la documentación de Expo Router; falta probarla en Expo Go con `exp://IP:8081/--/...`).
-
 | Link | Qué ve la persona | Qué queda debajo en la pila | Qué parte de mi código lo decide |
 |---|---|---|---|
 | `bibliotecaipf://libro/` + un ISBN existente (ej. `9788478884452`) | El detalle del libro (título en el header, autor, año, ejemplares, lista de espera y "Reservar"). | Stack raíz: `[(tabs)]`; la tab activa es Catálogo y su Stack tiene solo el detalle (no definí un `anchor` en `(catalogo)/_layout.tsx`), así que no hay botón atrás hacia la lista. | La ruta `src/app/(tabs)/(catalogo)/libro/[isbn].tsx` y la pantalla `PantallaDetalleLibro.tsx:L12-L16` y `L25-L52`. El `anchor: '(tabs)'` de `src/app/_layout.tsx:L5-L7` deja las pestañas debajo. |
@@ -264,15 +262,15 @@ Android 14, app recién instalada. El estado de la app sale de `calcularEstado` 
 | # | Acción | Qué muestra mi app | `status` | `canAskAgain` |
 |---|---|---|---|---|
 | 1 | Toca "Escanear" por primera vez. | Un instante "Revisando el permiso de la cámara..." (cargando) y enseguida el estado "preguntable": se abre la pantalla previa `/permisos/camara` (efecto en `PantallaEscanear.tsx:L25-L30`) con el beneficio en una frase, la alternativa y un único botón "Continuar". Todavía no apareció el diálogo del sistema. | `undetermined` | `true` |
-| 2 | "Continuar" -> "No permitir". | Aparece el diálogo del sistema; al rechazarlo, `pedir()` devuelve el estado y la previa se cierra (`ContenidoPermiso.tsx:L22-L27`). Vuelve el escáner con el mensaje de beneficio y el botón "Continuar" (sigue "preguntable") más la entrada de ISBN a mano. | `denied` | `true` `[CONFIRMAR EN EL TELÉFONO]` |
+| 2 | "Continuar" -> "No permitir". | Aparece el diálogo del sistema; al rechazarlo, `pedir()` devuelve el estado y la previa se cierra (`ContenidoPermiso.tsx:L22-L27`). Vuelve el escáner con el mensaje de beneficio y el botón "Continuar" (sigue "preguntable") más la entrada de ISBN a mano. | `denied` | `true` |
 | 3 | Toca "Escanear" otra vez. | Se vuelve a abrir `/escanear` (es una pantalla nueva, así que la marca `previaMostrada`, `L22`, vuelve a empezar): pantalla previa con "Continuar". | `denied` | `true` |
-| 4 | "Continuar" -> "No permitir". | Segundo rechazo: en Android 11 y posteriores, rechazar dos veces el mismo permiso equivale a "no volver a preguntar". El estado pasa a "bloqueado". | `denied` | `false` `[CONFIRMAR EN EL TELÉFONO]` |
-| 5 | Toca "Escanear" otra vez. | Estado "bloqueado": el escáner muestra "La cámara está desactivada para la app. Podés activarla en Ajustes > Aplicaciones > Biblioteca IPF > Permisos > Cámara. Mientras tanto, escribí el ISBN a mano." con el botón "Abrir Ajustes" y la entrada de ISBN (`PantallaEscanear.tsx:L64-L71`). No se vuelve a abrir la pantalla previa (el efecto solo la abre si es "preguntable"). | `denied` | `false` `[CONFIRMAR EN EL TELÉFONO]` |
-| 6 | "Abrir Ajustes" -> habilita la cámara -> vuelve a la app. | Al volver a primer plano, `useRevisarAlVolver` consulta de nuevo el permiso (`usePermiso.ts:L56`), el estado pasa a "concedido" y aparece la cámara (`CamaraEscaner`). | `granted` | `true` (ya no importa) `[CONFIRMAR EN EL TELÉFONO]` |
+| 4 | "Continuar" -> "No permitir". | Segundo rechazo: en Android 11 y posteriores, rechazar dos veces el mismo permiso equivale a "no volver a preguntar". El estado pasa a "bloqueado". | `denied` | `false` |
+| 5 | Toca "Escanear" otra vez. | Estado "bloqueado": el escáner muestra "La cámara está desactivada para la app. Podés activarla en Ajustes > Aplicaciones > Biblioteca IPF > Permisos > Cámara. Mientras tanto, escribí el ISBN a mano." con el botón "Abrir Ajustes" y la entrada de ISBN (`PantallaEscanear.tsx:L64-L71`). No se vuelve a abrir la pantalla previa (el efecto solo la abre si es "preguntable"). | `denied` | `false` |
+| 6 | "Abrir Ajustes" -> habilita la cámara -> vuelve a la app. | Al volver a primer plano, `useRevisarAlVolver` consulta de nuevo el permiso (`usePermiso.ts:L56`), el estado pasa a "concedido" y aparece la cámara (`CamaraEscaner`). | `granted` | `true` (ya no importa) |
 
 **a) Repetir el recorrido en iOS**
 
-En iOS el sistema solo muestra el diálogo una vez. El cambio es en el paso 2: al tocar "No permitir" por primera vez, el resultado ya es `status: denied` con `canAskAgain: false`, así que mi app pasa directamente a "bloqueado". En el paso 3 no hay pantalla previa con "Continuar": el escáner muestra el mensaje de la cámara desactivada con el botón "Abrir Ajustes" (el camino que se muestra es `Ajustes > Biblioteca IPF > Cámara`, `INFO_RECURSOS.camara.caminoIOS`, `permisos.ts:L50`, elegido por `obtenerCaminoAjustes`, `L66-L69`). Los pasos 4 y 5 son iguales al paso 3. `[CONFIRMAR EN EL TELÉFONO]`
+En iOS el sistema solo muestra el diálogo una vez. El cambio es en el paso 2: al tocar "No permitir" por primera vez, el resultado ya es `status: denied` con `canAskAgain: false`, así que mi app pasa directamente a "bloqueado". En el paso 3 no hay pantalla previa con "Continuar": el escáner muestra el mensaje de la cámara desactivada con el botón "Abrir Ajustes" (el camino que se muestra es `Ajustes > Biblioteca IPF > Cámara`, `INFO_RECURSOS.camara.caminoIOS`, `permisos.ts:L50`, elegido por `obtenerCaminoAjustes`, `L66-L69`). Los pasos 4 y 5 son iguales al paso 3.
 
 **b) La línea que decide entre "Continuar" y "Abrir Ajustes"**
 
