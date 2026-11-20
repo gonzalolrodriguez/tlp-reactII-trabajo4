@@ -383,3 +383,179 @@ Porque `expo-camera` lo agrega por defecto (`recordAudioAndroid = true`, `node_m
 - El **texto de propósito** de la cámara y los **permisos finales** (`blockedPermissions`, `recordAudioAndroid`): Expo Go es una app ya compilada con su propio `Info.plist` y manifiesto, así que mi `app.json` no se aplica. Lo verificaría en una development build (`npx expo prebuild` y revisar `AndroidManifest.xml` e `Info.plist`, o `npx expo run:android` y `adb shell dumpsys package <paquete>` para ver los permisos) y comprobando que el diálogo de cámara muestra mi texto.
 - El **canal de Android** y las **notificaciones**: en Expo Go para Android las notificaciones pueden no estar disponibles (por eso `src/lib/permisos.ts:L6-L29` carga `expo-notifications` dentro de un `try/catch`), así que el orden canal-permiso y el recordatorio a los 15 segundos solo se pueden comprobar del todo en una development build en Android 13 o superior.
 - El **esquema propio** `bibliotecaipf://`: en Expo Go no está registrado, solo funciona la forma `exp://IP:8081/--/...`. Con la build de desarrollo se prueba con `npx uri-scheme open bibliotecaipf://... --android`.
+
+---
+
+# Parte E - Buenas prácticas y decisiones de diseño
+
+## E1. Revisión de código
+
+**a) Problemas de `src/app/(tabs)/index.tsx` del compañero**
+
+| # | Línea | Problema | Clasificación | Por qué sucede | Cómo corregirlo |
+|---|---|---|---|---|---|
+| 1 | 18-20 | El `useEffect` no tiene array de dependencias: corre después de cada render. | Error de ejecución (bucle de pedidos) | `setLibros(datos)` cambia el estado -> re-render -> el efecto corre otra vez -> nuevo pedido (ver b). | Agregar `[]` (o las dependencias reales) y mover la carga a un hook como mi `useLibros` (`src/hooks/useLibros.ts:L13-L50`). |
+| 2 | 19 | El pedido no tiene `.catch` y `obtenerLibros()` falla 1 de cada 5 veces. | Error de ejecución | La promesa rechazada queda sin manejar (*unhandled rejection*) y la lista queda vacía sin explicación. | Estado `error` con un mensaje claro y botón "Reintentar" (mi `PantallaCatalogo.tsx:L18-L19`). |
+| 3 | 18-20 | Sin estados de carga, error ni vacío, y sin limpieza del efecto. | Mala práctica | Si el componente se desmonta antes de resolver, se actualiza estado de algo desmontado o llegan respuestas viejas; no hay indicador de carga. | Variable `cancelado` en la limpieza, `cargando`, `error` y `ListEmptyComponent` (como en `useLibros.ts:L20-L41`). |
+| 4 | 13-16 | Pide permiso de cámara y de notificaciones al montar, sin contexto ni acción de la persona. | Mala práctica (experiencia y revisión de tienda) | El efecto dispara dos diálogos del sistema apenas se abre el Catálogo, sin explicar para qué. | Pedir cada permiso solo cuando se necesita: la cámara al entrar a `/escanear` con pantalla previa, las notificaciones al activar "Recordarme" (como en `usePermiso`). |
+| 5 | 15 y 6 | `Notifications.requestPermissionsAsync()` se llama sin crear antes el canal de Android y el import de `expo-notifications` es estático. | Error de ejecución en Android 13+ y en Expo Go (según la versión) | Sin canal, el diálogo de Android 13+ no aparece (ver D2 c); y en Expo Go para Android, importar el módulo puede romper la app. | Crear el canal antes de pedir y cargar el módulo con `import()` dentro de `try/catch` (`src/lib/permisos.ts:L6-L29` y `L112-L124`). |
+| 6 | 14-15 | `pedirPermiso` falta en el array de dependencias (el `[]` está incompleto) y no se manejan las promesas de los dos pedidos. | Advertencia (`react-hooks/exhaustive-deps`) | El linter exige declarar todo valor reactivo que usa el efecto; las promesas rechazadas no se manejan. | Quitar el efecto (punto 4) o declarar las dependencias y manejar errores. |
+| 7 | 11 | `permiso` se declara y no se usa. | Advertencia (lint) | Código sin usar que genera ruido en `npx expo lint`. | Eliminarlo. |
+| 8 | 22 | `libro: any`. | Mala práctica | `any` desactiva el chequeo de tipos: un error como `libro.titlo` no se detecta al compilar. | Tipar con `Libro` de `src/types/index.ts`. |
+| 9 | 22-30 | El componente `Fila` está declarado dentro de `Catalogo`. | Rendimiento u optimización (y mala práctica) | En cada render se crea una función nueva: para React es un tipo de componente distinto, así que desmonta y vuelve a montar todas las filas y pierde su estado. | Moverlo a su propio archivo a nivel de módulo (mi `src/components/TarjetaLibro.tsx`). |
+| 10 | 33-36 | `ScrollView` con `map` y `key={i}` (el índice). | Rendimiento u optimización / mala práctica | `ScrollView` monta todos los elementos a la vez (no virtualiza) y el índice como `key` hace que React reutilice mal los nodos si la lista cambia de orden o se filtra. | `FlatList` con `keyExtractor={(l) => l.isbn}` (`PantallaCatalogo.tsx:L23-L30`). |
+| 11 | 37-39 | `Pressable` con solo un ícono, sin `accessibilityRole` ni `accessibilityLabel`, y área táctil de unos 28 px. | Mala práctica (accesibilidad) | Un lector de pantalla no sabe qué es ni qué hace, y el área táctil es menor a 44 x 44. | `accessibilityRole="button"`, `accessibilityLabel="Escanear código de barras"` y área mínima de 44 (`TAMANIOS.areaTactil`, `src/constants/tema.ts:L33`). |
+| 12 | 25 | Estilos en línea y valores fijos (`fontSize: 16`, `color: '#333'`, `padding: 12`). | Mala práctica | Se crea un objeto nuevo por render y los valores quedan repetidos y fuera del tema. | `StyleSheet.create` y constantes de `src/constants/tema.ts`. |
+| 13 | 24 y 37 | Rutas armadas con strings (`'/libro/' + libro.isbn`) y `router.push` directo. | Mala práctica | Se pierde el chequeo de las rutas tipadas: un error de tipeo no se detecta al compilar. | `href={{ pathname: '/libro/[isbn]', params: { isbn } }}` con rutas tipadas (`TarjetaLibro.tsx:L17`). |
+| 14 | 9-42 | Toda la pantalla (lógica, componentes y estilos) está dentro de `src/app`. | Mala práctica (estructura) | `src/app` debería tener solo rutas; mezclar todo en un archivo impide reutilizar y probar. | El archivo de ruta solo reexporta la pantalla (`src/app/(tabs)/(catalogo)/index.tsx:L1`). |
+
+**b) El efecto de las líneas 18-20 no tiene array de dependencias. ¿Qué pasa durante el primer minuto? ¿Cambiaría algo si `obtenerLibros()` devolviera siempre el mismo array?**
+
+`obtenerLibros()` espera 800 ms y devuelve `LIBROS.map((l) => ({ ...l }))` (`src/lib/api.ts:L9-L15`): un array nuevo, con objetos nuevos, en cada llamada. Con el array de dependencias omitido, el efecto corre después de cada render.
+
+1. **t = 0:** primer render con `libros = []`. Corren los dos efectos; el segundo llama a `obtenerLibros()` (pedido 1).
+2. **t ~ 0,8 s:** el pedido 1 resuelve con un array nuevo. `setLibros(datos)`: como `Object.is(nuevo, anterior)` es `false`, React programa un render.
+3. **Render con datos:** se dibuja la lista y, como el efecto no tiene dependencias, **vuelve a ejecutarse**: pedido 2.
+4. **t ~ 1,6 s:** el pedido 2 resuelve con otro array nuevo (referencia distinta): otro render, otro efecto, pedido 3.
+5. El ciclo se repite cada ~0,8 s. Si no hubiera fallas serían unos 70 a 75 pedidos en el minuto, cada uno con un render de toda la lista (y con `Fila` reconstruyéndose, punto 9): consumo de datos, batería y CPU, y una lista que parpadea sin estado estable.
+6. **Las fallas aleatorias cortan el bucle:** en cada pedido hay un 20 % de probabilidad de que `obtenerLibros()` lance un error. Como no hay `.catch`, esa promesa rechazada no llama a `setLibros`, por lo tanto no hay render nuevo y no se agenda otro efecto. El bucle se detiene silenciosamente (con un aviso de *unhandled rejection* en la consola) y dura en promedio unos 5 ciclos (~4 s); que llegue a durar un minuto entero es prácticamente imposible (0,8^75). Pero cualquier otro render (por ejemplo, un cambio de estado de `useCameraPermissions` cuando la persona responde el diálogo) lo reinicia, así que el comportamiento es intermitente y difícil de depurar.
+
+**¿Cambiaría algo si siempre devolviera el mismo array?** Sí: el bucle desaparecería. React compara el estado nuevo con el anterior con `Object.is`; si la referencia es la misma, `setLibros` se descarta (*bail out*) y no se agenda un render nuevo (React puede evaluar el componente una vez más antes de descartarlo, pero no sigue con los hijos ni con los efectos). Sin render nuevo, el efecto no corre otra vez: un pedido, un render con datos y fin. El código seguiría estando mal (falta el array de dependencias y depende de un detalle de la API para no romperse): por eso una API real, que "trae objetos nuevos" como dice el comentario de `api.ts:L8`, lo expone.
+
+**c) La pantalla reescrita con mis hooks, componentes y constantes**
+
+Es la que tengo en la app: la ruta solo reexporta la pantalla, y la pantalla usa `useLibros`, `FlatList` con `keyExtractor` estable, los componentes de estado, `TarjetaLibro` (a nivel de módulo, con `Link` a una ruta tipada) y `AccesosRapidos` con botones accesibles; los permisos se piden solo cuando hacen falta (en `/escanear` y al activar "Recordarme").
+
+```tsx
+// src/app/(tabs)/(catalogo)/index.tsx
+export { default } from '@/components/PantallaCatalogo';
+```
+
+```tsx
+// src/components/PantallaCatalogo.tsx
+import { FlatList, StyleSheet } from 'react-native';
+
+import EncabezadoCatalogo from '@/components/EncabezadoCatalogo'; // Vistos recientemente + accesos a Buscar y Escanear
+import EstadoCargando from '@/components/EstadoCargando';
+import EstadoError from '@/components/EstadoError';
+import EstadoVacio from '@/components/EstadoVacio';
+import TarjetaLibro from '@/components/TarjetaLibro';
+import { COLORES, ESPACIADO } from '@/constants/tema';
+import { useLibros } from '@/hooks/useLibros';
+
+export default function PantallaCatalogo() {
+  const { libros, cargando, error, reintentar } = useLibros();
+
+  // Qué se muestra cuando la lista no tiene libros: cargando, error o vacío.
+  let sinLibros = <EstadoVacio mensaje="La biblioteca todavía no tiene libros cargados." />;
+  if (cargando) {
+    sinLibros = <EstadoCargando mensaje="Cargando el catálogo..." />;
+  } else if (error !== null) {
+    sinLibros = <EstadoError mensaje={error} onReintentar={reintentar} />;
+  }
+
+  return (
+    <FlatList
+      style={estilos.lista}
+      contentContainerStyle={estilos.contenido}
+      data={libros}
+      keyExtractor={(libro) => libro.isbn}
+      renderItem={({ item }) => <TarjetaLibro libro={item} />}
+      ListHeaderComponent={EncabezadoCatalogo}
+      ListEmptyComponent={sinLibros}
+    />
+  );
+}
+
+const estilos = StyleSheet.create({
+  lista: { flex: 1, backgroundColor: COLORES.fondo },
+  contenido: { padding: ESPACIADO.l },
+});
+```
+
+El acceso a la cámara que en el código del compañero era un `Pressable` con un ícono es, en mi versión, el botón "Escanear" de `AccesosRapidos` (`src/components/AccesosRapidos.tsx:L14-L18`), con texto visible, `accessibilityRole="button"` (dentro de `BotonPrimario`) y área táctil de 44 (`TAMANIOS.areaTactil`). El link "Personal" del header lo pone el Stack de la tab (`src/app/(tabs)/(catalogo)/_layout.tsx:L8`).
+
+**d) ¿Cuál podría provocar el rechazo de la app en una tienda y cuál haría que una persona la desinstale primero?**
+
+- **Rechazo de tienda:** pedir permisos al abrir la app, sin contexto ni propósito (líneas 13-16). La guía de revisión de Apple, apartado 5.1.1, dice que las apps "should only request access to data relevant to the core functionality of the app" (solo deben pedir acceso a datos relevantes para su función principal), que los textos de propósito deben describir clara y completamente el uso de los datos, y que "where possible, provide alternative solutions for users who don't grant consent" (donde se pueda, ofrecer alternativas a quien no da consentimiento). Pedir la cámara y las notificaciones al abrir el Catálogo, sin que la persona haya tocado "Escanear" ni activado un recordatorio, no cumple eso. En mi app, los permisos se piden con una pantalla previa y cada uno tiene una alternativa (ISBN a mano y avisos dentro de la app).
+- **Desinstalación:** lo más probable es el **bucle de pedidos** de las líneas 18-20: se nota sin que la persona haga nada, agota batería y datos móviles, calienta el teléfono y hace parpadear la lista, sin salida. Los diálogos de permiso al abrir molestan, pero se descartan con un toque.
+
+## E2. Organización y acoplamiento
+
+**a) ¿Qué carpetas importan a cuáles? ¿Hay alguna importación "hacia arriba"?**
+
+Revisé los imports con una búsqueda en todo `src/`:
+
+| Carpeta | Importa de |
+|---|---|
+| `app` | `components` (en los archivos de ruta y en `_layout`), `context` y `constants` (`src/app/_layout.tsx:L1-L2` y `src/app/(tabs)/_layout.tsx:L3-L4`) |
+| `components` | `components`, `hooks`, `context`, `lib`, `data`, `types`, `constants` |
+| `hooks` | `hooks`, `context`, `lib`, `types`, `constants` |
+| `context` | `lib`, `data`, `estructuras`, `types`, `constants` |
+| `lib` | `data`, `estructuras`, `types`, `constants` (con rutas relativas) |
+| `data` | `types` |
+| `estructuras`, `types`, `constants` | nada de `src` |
+
+El sentido es `app -> components -> hooks -> context -> lib -> data / estructuras / types / constants`, sin ciclos. **Ninguna carpeta importa de `src/app`** (una búsqueda de `@/app` y `../app` no da resultados): ni un hook ni un componente conoce las rutas; las rutas solo conocen las pantallas. (Los hooks y componentes importan el paquete `expo-router`, pero eso es una librería, no `src/app`.)
+
+Importar `src/app` desde un hook sería un problema: la carpeta `app` es lo que el router recorre para generar las URLs, y con importaciones hacia arriba se crean ciclos y se ata la lógica reutilizable a la estructura de rutas (mover o renombrar una ruta rompería los hooks, y no se podrían probar sin cargar el router).
+
+**b) Si el Catálogo pasara a venir de una API real, ¿qué archivos cambiarían? Si la lista tiene más de dos archivos, ¿qué dice eso de mi diseño?**
+
+El pedido en sí está aislado: cambiaría `src/lib/api.ts` (reemplazar `LIBROS` por un `fetch`) y, como mucho, los mensajes de error en `src/hooks/useLibros.ts` y `src/hooks/useBuscarLibros.ts`. Las pantallas que usan esos hooks no cambiarían.
+
+Pero la lista es más larga: `src/data/libros.ts` dejaría de ser la fuente de datos y hoy hay búsquedas por ISBN que la leen de forma sincrónica: `src/lib/libros.ts:L11-L13` (`buscarLibroPorIsbn`, usado por el detalle, el escáner, el Context, las tarjetas de préstamo y de espera y "recientes"), y dos pantallas que importan `LIBROS` directamente: `PantallaReservas.tsx:L7` y `L21`, y `PantallaMostrador.tsx:L8` y `L12`. Eso dice dos cosas de mi diseño: (1) los datos están separados del resto, pero la app tiene dos caminos para leer libros (el pedido asincrónico y la consulta sincrónica a `data`), es decir, la fuente de verdad no es una sola; (2) dos pantallas se saltan la capa `lib` e importan de `data`. Con una API real haría falta un lugar único con los libros ya cargados (un store o el Context) del que lean todos.
+
+**c) Un compañero propone reemplazar `usePermiso` y la pantalla previa por un único `<ConPermiso recurso="camara">...</ConPermiso>` que envuelva a la cámara. ¿Qué ganaría y qué perdería? ¿Me serviría para las notificaciones?**
+
+Ganaría: menos piezas para la cámara y un solo lugar donde decidir "si hay permiso muestro esto, si no aquello".
+
+Perdería: (1) la pantalla previa es una ruta propia (`/permisos/[recurso]`, modal) que el TP pide y que se abre también como deep link; un componente envolvente no la reemplaza; (2) el hook devuelve datos (`estado`, `pedir`, `abrirAjustes`) que usan tres lugares con interfaces distintas: el escáner, la pantalla previa y la línea de estado de "Mis reservas" (`PantallaEscanear.tsx:L15`, `ContenidoPermiso.tsx:L15`, `EstadoNotificaciones.tsx:L9`); un componente envolvente obliga a su contenido a estar adentro y no sirve para mostrar un estado en otro lugar; (3) menos control sobre los estados "bloqueado" y "preguntable" (qué mostrar y cuándo abrir la pantalla previa).
+
+Para las notificaciones, que se piden desde un interruptor y no al abrir una pantalla, no serviría: no hay un componente "que envolver", el permiso se pide como consecuencia de una acción (`useRecordatorio.ts:L13-L38`). El hook, en cambio, ya sirve para los dos recursos (`usePermiso('camara')` y `usePermiso('notificaciones')`).
+
+## E3. Mapa de fallas
+
+| Situación | Qué ve la persona | Dónde se maneja (archivo y línea) |
+|---|---|---|
+| `obtenerLibros()` falla | El mensaje "No pudimos cargar el catálogo. Revisá tu conexión e intentá de nuevo." con el botón "Reintentar". | `src/hooks/useLibros.ts:L30-L35` (guarda el mensaje) y `src/components/PantallaCatalogo.tsx:L18-L19` (muestra `EstadoError`). |
+| Se abre `/libro/abc` | "El ISBN no es válido: tiene que tener 13 dígitos." con el link "Ir al Catálogo". | `src/components/PantallaDetalleLibro.tsx:L25-L27` (valida con `esIsbnValido`, `src/lib/libros.ts:L5-L9`) y `MensajeConEnlace.tsx:L11-L19`. |
+| Se escanea un ISBN que no está en el catálogo | Un aviso en pantalla: "El ISBN ... no está en el catálogo de la biblioteca." y se puede seguir escaneando. | `src/components/PantallaEscanear.tsx:L36-L42`. |
+| La cámara está bloqueada | "La cámara está desactivada para la app. Podés activarla en ..." con el botón "Abrir Ajustes", y la entrada de ISBN a mano. | `PantallaEscanear.tsx:L64-L71`; el estado sale de `calcularEstado` (`src/lib/permisos.ts:L73-L81`). |
+| Las notificaciones están denegadas | En "Mis reservas": "Notificaciones: no permitidas. Los avisos se muestran acá, dentro de la app." Al entregarle un libro desde el mostrador, un aviso dentro de la app. Si activa "Recordarme" y el permiso está bloqueado, la pantalla previa le ofrece "Abrir Ajustes". | `src/components/EstadoNotificaciones.tsx:L14-L21`; `BibliotecaContext.tsx:L216-L221` (aviso en la app); `src/hooks/useRecordatorio.ts:L29-L35` y `ExplicacionPermiso.tsx` (pantalla previa). Si no se pudo programar el recordatorio: `BibliotecaContext.tsx:L165-L170`. |
+| Se intenta reservar un libro ya reservado | El botón "Confirmar" está deshabilitado y se lee "Ya tenés este libro prestado o en la lista de espera. No se puede reservar dos veces." | `src/components/PantallaReservar.tsx:L12`, `L25`, `L51` y `L54`; la regla también está en `reservar` (`BibliotecaContext.tsx:L122-L124`) y se muestra el mensaje si igual se intenta (`PantallaReservar.tsx:L34-L36`). |
+| "Entregar al siguiente" con la lista de espera vacía | Un libro sin nadie en la lista no aparece en el mostrador: al entregar al último, desaparece la tarjeta y, si no queda ninguna, se lee "No hay personas en lista de espera." Si igual se llamara a la acción, no pasa nada (no rompe). | `src/components/PantallaMostrador.tsx:L12` y `L20`; la protección en `BibliotecaContext.tsx:L195-L198`. |
+| Login con clave incorrecta | "Usuario o clave incorrectos. Revisá los datos e intentá de nuevo." y el modal sigue abierto. | `src/components/PantallaLogin.tsx:L15-L18`; la comprobación está en `iniciarSesion` (`BibliotecaContext.tsx:L226-L232`). |
+
+## E4. Decisiones con argumentos
+
+**a) Identificador: ¿ISBN como parámetro de ruta y `key`, o un id numérico propio?**
+
+Elegí el ISBN como identificador: es el parámetro de la ruta `/libro/[isbn]`, el `keyExtractor` de las listas (`PantallaCatalogo.tsx:L27`) y la clave de los préstamos y las esperas.
+
+- El ISBN identifica la edición: dos ediciones del mismo título tienen ISBN distinto, así que no se pisan ni como `key` ni como ruta. Por eso es mejor que usar el título.
+- El escáner lee el ISBN del código de barras: con un id propio habría que traducir cada lectura a ese id.
+- Es un `string` de 13 dígitos (`src/types/index.ts:L2`), no un `number`: un número perdería ceros a la izquierda.
+- Límites: un libro sin ISBN (material propio de la biblioteca o ediciones muy antiguas) no entra en este modelo; habría que tener un id propio. Además, `useLocalSearchParams` no garantiza el tipo: un parámetro puede llegar como `string` o `string[]`, y puede ser cualquier cosa que escriba quien arma el link. Por eso valido el valor antes de usarlo (`PantallaDetalleLibro.tsx:L15-L16`) en lugar de confiar en el tipo `string`.
+
+**b) Estructuras: ¿clase `Pila` con `#items` o un array en el estado con `[...pila, x]` y `slice`?**
+
+Usé las clases `Pila` y `Cola` (`src/estructuras/Pila.ts`, `Cola.ts`).
+
+- Qué me dio la clase: encapsulación (con `#items` no se puede tocar el interior; solo existen `push`, `pop`, `tope`, `encolar`, `desencolar`...), operaciones con nombre del dominio (`tope()` y `desencolar()` se leen mejor que un `slice`), y se pueden probar por separado (13 casos con jest, `src/estructuras/*.test.ts`).
+- Qué me complicó con React: React solo detecta cambios por referencia, así que nunca puedo mutar la instancia guardada en el estado: tuve que escribir `copiarPila`, `copiarCola` y `colaDesdeArray` (`src/lib/colecciones.ts`). Los campos privados `#items` no se copian con el operador spread (`{ ...pila }` da un objeto vacío), así que la copia se hace con `aArray()`. Y una instancia de clase no se serializa directamente (por ejemplo, para guardarla en AsyncStorage habría que pasar por `aArray()`).
+- Con un array y `[...pila, x]` esto sería más corto y natural en React, a costa de perder el invariante (cualquiera puede hacer `splice` en cualquier lugar).
+
+**c) Memorización: ¿usé `useMemo` o `useCallback`? Un lugar donde aportan y otro donde serían ruido**
+
+Sí, en el Context: el valor del provider está en `useMemo` (`BibliotecaContext.tsx:L238-L279`) y cada función está en `useCallback` (`L75-L236`).
+
+- Donde aportan: `registrarVisto` (`L99-L108`, con `useCallback` y dependencias `[]`) es dependencia del efecto del detalle (`PantallaDetalleLibro.tsx:L19-L23`). Si su identidad cambiara en cada render, el efecto correría en cada render. También `useRevisarAlVolver(revisar)` vuelve a suscribirse a `AppState` si `revisar` cambia, por eso `consultar` está en `useCallback` (`usePermiso.ts:L30-L36`).
+- Donde serían ruido: en los componentes de pantalla y de lista (`TarjetaLibro`, `PantallaCatalogo`): el proyecto tiene el compilador de React activado (`app.json:L53`, `reactCompiler: true`), que ya memoriza valores y funciones de los componentes; agregar `useMemo` o `React.memo` a mano ahí solo suma código sin beneficio medible con 17 libros. Incluso en el Context el compilador podría hacer parte de ese trabajo; los dejé explícitos para que se vea qué identidad necesita estar estable.
+- Cómo lo comprobaría en lugar de suponerlo: con el Profiler de React DevTools (o "highlight updates"), viendo qué componentes se renderizan al cambiar el Context, y comparando con y sin la memorización.
+
+**d) Datos duplicados: ¿guardé los "ejemplares disponibles" en el estado o los calculé?**
+
+Los calculo: `calcularDisponibles` (`src/lib/prestamos.ts:L7-L14`) devuelve `libro.ejemplares` + ingresos por entrega - préstamos del libro, y el Context lo expone como `obtenerDisponibles` (`BibliotecaContext.tsx:L80-L83`). No hay ninguna variable "disponibles" guardada.
+
+El error que aparece cuando un mismo dato vive en dos lugares es la inconsistencia: si guardara `disponibles` aparte de `prestamos`, habría que acordarse de restarlo al reservar, sumarlo al devolver y ajustarlo al entregar desde el mostrador. Si en algún camino se olvida, el Catálogo diría "2 disponibles" y el detalle "1", o se podría reservar un libro agotado. Calculándolo, cualquier pantalla que lo muestre parte de los mismos datos (`prestamos`) y no puede contradecirse. Lo mismo pasa con la posición en la lista de espera: se deduce de la `Cola` (`posicionEnEspera`, `L86-L92`) y no se guarda. La excepción es `ingresosPorEntrega` (`L72`), un contador que sí es estado: cuando el mostrador le entrega un libro a la persona y el libro tenía 0 ejemplares en el estante, ese ejemplar "ingresa" a la cuenta, así el disponible sigue siendo `0 + 1 - 1 = 0` y no negativo.
